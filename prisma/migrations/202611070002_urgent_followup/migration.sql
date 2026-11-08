@@ -1,0 +1,1 @@
+ALTER TABLE "Message" ADD COLUMN "urgent" BOOLEAN NOT NULL DEFAULT false;

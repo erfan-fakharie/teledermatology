@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client"
+  output = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id String @id
+  name String
+  role String
+  sessions Session[]
+  cases Case[]
+}
+
+model Session {
+  hash String @id
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires DateTime
+}
+
+model Case {
+  id String @id @default(uuid())
+  patientId String
+  patient User @relation(fields: [patientId], references: [id])
+  areas String[]
+  concern String
+  amount BigInt
+  status String @default("PENDING_REVIEW")
+  reason String?
+  intake Json?
+  note String @default("")
+  demoNow DateTime?
+  createdAt DateTime @default(now())
+  queue QueueEntry?
+  payments Payment[]
+  episodes Episode[]
+  files Attachment[]
+  notices Notice[]
+  audit Audit[]
+  @@index([patientId, createdAt])
+}
+
+model Payment {
+  id String @id @default(uuid())
+  caseId String
+  case Case @relation(fields: [caseId], references: [id])
+  result String
+  amount BigInt
+  createdAt DateTime @default(now())
+  @@index([caseId])
+}
+
+model QueueEntry {
+  caseId String @id
+  case Case @relation(fields: [caseId], references: [id])
+  ordinal Int @unique @default(autoincrement())
+  state String @default("WAITING")
+  previous String?
+  holdReason String?
+  @@index([state, ordinal])
+}
+
+model Episode {
+  id String @id @default(uuid())
+  caseId String
+  case Case @relation(fields: [caseId], references: [id])
+  number Int
+  state String
+  eligibleAt DateTime?
+  closedAt DateTime?
+  messages Message[]
+  files Attachment[]
+  @@unique([caseId, number])
+}
+
+model Message {
+  id String @id @default(uuid())
+  episodeId String
+  episode Episode @relation(fields: [episodeId], references: [id])
+  author String
+  clientId String
+  body String
+  urgent Boolean @default(false)
+  createdAt DateTime @default(now())
+  files Attachment[]
+  @@unique([episodeId, clientId])
+}
+
+model Attachment {
+  id String @id
+  caseId String
+  case Case @relation(fields: [caseId], references: [id])
+  episodeId String?
+  episode Episode? @relation(fields: [episodeId], references: [id])
+  messageId String?
+  message Message? @relation(fields: [messageId], references: [id])
+  ownerId String
+  filename String
+  mime String
+  bytes Int
+  sha256 String
+  createdAt DateTime @default(now())
+  @@index([caseId, episodeId])
+}
+
+model Notice {
+  key String @id
+  caseId String
+  case Case @relation(fields: [caseId], references: [id])
+  text String
+  status String @default("SIMULATED")
+  createdAt DateTime @default(now())
+}
+
+model Audit {
+  id String @id @default(uuid())
+  caseId String
+  case Case @relation(fields: [caseId], references: [id])
+  actor String
+  action String
+  createdAt DateTime @default(now())
+}

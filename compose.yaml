@@ -1,0 +1,13 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: derm
+      POSTGRES_PASSWORD: derm_local
+      POSTGRES_DB: derm
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - derm_db:/var/lib/postgresql/data
+volumes:
+  derm_db:

@@ -1,0 +1,11 @@
+node_modules/
+.next/
+next-env.d.ts
+.data/
+.data-followup/
+.env*
+!.env.example
+src/generated/
+*.tsbuildinfo
+public/skin-case-01.jpg
+public/skin-case-02.jpg
