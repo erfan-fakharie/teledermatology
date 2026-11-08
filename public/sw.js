@@ -1,4 +1,4 @@
-const CACHE = "derm-public-v2";
+const CACHE = "derm-public-v4";
 const PUBLIC = ["/offline", "/icon-192.png", "/icon-512.png", "/maskable.png"];
 self.addEventListener("install", event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(PUBLIC))));
 self.addEventListener("activate", event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith("derm-public-") && key !== CACHE).map(key => caches.delete(key))))));

@@ -1,8 +1,10 @@
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { db } from "./db";
 import { areas, demoPrice } from "./catalog";
 import { storage } from "./storage";
 import type { Prisma, User } from "../generated/prisma/client";
+import type { InitialPhoto } from "./prepare-image";
 
 export class WorkflowError extends Error {
   constructor(public status: number, public code: string, message: string) { super(message); }
@@ -13,8 +15,9 @@ export function check(ok: unknown, message = "این اقدام در وضعیت 
 const uuid = z.uuid();
 const selected = z.array(z.enum(areas)).min(1).max(3);
 const text = z.string().trim().min(1).max(5000);
+const concern = z.string().trim().min(10).max(3000);
 const action = z.discriminatedUnion("type", [
-  z.strictObject({type:z.literal("request"), areas:selected, concern:z.string().trim().min(10).max(3000), consent:z.literal(true)}),
+  z.strictObject({type:z.literal("request"), areas:selected, concern:concern.optional(), concerns:z.partialRecord(z.enum(areas),concern).optional(), consent:z.literal(true)}),
   z.strictObject({type:z.enum(["approve","prepare","start","resume","advance"]), id:uuid}),
   z.strictObject({type:z.enum(["reject","hold","correct"]), id:uuid, reason:text}),
   z.strictObject({type:z.literal("pay"), id:uuid, result:z.enum(["VERIFIED","FAILED","CANCELLED"])}),
@@ -48,7 +51,7 @@ const demoInterval = () => {
   return days * 86400000;
 };
 
-export async function mutate(user: User, input: unknown) {
+export async function mutate(user: User, input: unknown, photos: Partial<Record<(typeof areas)[number], InitialPhoto[]>> = {}) {
   const data = action.parse(input);
   const result = await db.$transaction(async tx => {
     await lock(tx);
@@ -57,7 +60,23 @@ export async function mutate(user: User, input: unknown) {
       const open = await tx.case.findFirst({where:{patientId:user.id,status:{in:["PENDING_REVIEW","AWAITING_PAYMENT","QUEUED","IN_INITIAL_CONSULTATION"]}},select:{id:true}});
       check(!open,"یک درخواست اولیهٔ باز دارید.");
       const chosen = areas.filter(area => data.areas.includes(area));
-      return tx.case.create({data:{ patientId:user.id, areas:chosen, concern:data.concern, amount:BigInt(demoPrice) }, select:{id:true}});
+      check(Object.keys(photos).every(area=>data.areas.some(selected=>selected===area)),"موضوع تصویر را از میان موضوعات انتخاب‌شده تعیین کنید.",422,"VALIDATION_ERROR");
+      const packageId = chosen.length > 1 ? randomUUID() : null;
+      let firstId: string | undefined;
+      for (const area of chosen) {
+        const description = data.concerns ? data.concerns[area] : data.concern;
+        check(description,"شرح مشکل را برای هر موضوع وارد کنید.",422,"VALIDATION_ERROR");
+        const {id} = await tx.case.create({
+          data:{
+            patientId:user.id, packageId, areas:[area], concern:description, amount:BigInt(demoPrice),
+            files:{create:photos[area]?.map(photo=>({...photo,ownerId:user.id,initial:true}))??[]},
+          },
+          select:{id:true},
+        });
+        firstId ??= id;
+      }
+      check(firstId);
+      return {id:firstId};
     }
     const c = await tx.case.findUnique({ where:{id:data.id}, include:{queue:true,episodes:{orderBy:{number:"asc"}}} });
     check(c && allowed(user,c.patientId), "پرونده یافت نشد.",404,"RESOURCE_NOT_FOUND");
@@ -77,15 +96,26 @@ export async function mutate(user: User, input: unknown) {
         check(c.status === "PENDING_REVIEW");
         await tx.case.update({where:{id},data:{status:"REJECTED",reason:data.reason}});
         break;
-      case "pay":
+      case "pay": {
         if (queue && data.result === "VERIFIED") return {id};
         check(c.status === "AWAITING_PAYMENT");
-        await tx.payment.create({data:{caseId:id,amount:c.amount,result:data.result}});
+        const bundle = c.packageId ? await tx.case.findMany({
+          where:{patientId:c.patientId,packageId:c.packageId},
+          select:{id:true,status:true,areas:true},
+        }) : [c];
+        check(!bundle.some(item=>item.status==="PENDING_REVIEW"),"پس از بررسی همهٔ پرونده‌های پکیج، پرداخت فعال می‌شود.");
+        const payable = bundle.filter(item=>item.status==="AWAITING_PAYMENT").sort(
+          (a,b)=>areas.findIndex(area=>area===a.areas[0])-areas.findIndex(area=>area===b.areas[0]),
+        );
+        await tx.payment.create({data:{caseId:payable[0].id,amount:c.amount,result:data.result}});
         if (data.result === "VERIFIED") {
-          await tx.queueEntry.create({data:{caseId:id}});
-          await tx.case.update({where:{id},data:{status:"QUEUED"}});
+          for (const item of payable) {
+            await tx.queueEntry.create({data:{caseId:item.id}});
+            await tx.case.update({where:{id:item.id},data:{status:"QUEUED"}});
+          }
         }
         break;
+      }
       case "prepare":
         if (queue?.state === "PREPARING") return {id};
         check(queue?.state === "WAITING");
@@ -101,7 +131,7 @@ export async function mutate(user: User, input: unknown) {
           check(!value || (Number.isFinite(Number(value)) && Number(value)>0),"قد و وزن را به صورت عدد مثبت وارد کنید.",422,"VALIDATION_ERROR");
         }
         if (data.submit && c.areas.some(area=>area !== "DIET")) {
-          check(await tx.attachment.count({where:{caseId:id,episodeId:null}}), "حداقل یک تصویر برای پوست یا مو اضافه کنید.",422,"VALIDATION_ERROR");
+          check(await tx.attachment.count({where:{caseId:id,episodeId:null,initial:false}}), "حداقل یک تصویر برای تکمیل پروندهٔ پوست یا مو اضافه کنید.",422,"VALIDATION_ERROR");
         }
         await tx.case.update({where:{id},data:{intake:{history:data.history,duration:data.duration,...(c.areas.includes("DIET")?{goal:data.goal,height:data.height,weight:data.weight}:{})},reason:null}});
         if (data.submit) await setQueue("READY");
@@ -191,7 +221,7 @@ export async function mutate(user: User, input: unknown) {
     await tx.audit.create({data:{caseId:id,actor:user.id,action:data.type}});
     return {id};
   },{timeout:15000});
-  if ("removedFiles" in result) {
+  if ("removedFiles" in result && result.removedFiles) {
     await Promise.allSettled(result.removedFiles.flatMap(({ id }) => [storage.remove(id, "original"), storage.remove(id, "preview")]));
   }
   return { id: result.id };

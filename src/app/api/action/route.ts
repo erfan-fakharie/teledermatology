@@ -26,7 +26,7 @@ export async function POST(request: Request) {
         await lock(tx);
         const file = await tx.attachment.findUnique({where:{id},include:{case:{include:{queue:true}}}});
         check(file?.ownerId===user.id,"فایل یافت نشد.",404);
-        check(user.role==="PATIENT" && !file.episodeId && file.case.queue?.state==="PREPARING");
+        check(user.role==="PATIENT" && !file.initial && !file.episodeId && file.case.queue?.state==="PREPARING");
         await tx.attachment.delete({where:{id}});
       });
       await Promise.allSettled([storage.remove(id,"original"),storage.remove(id,"preview")]);

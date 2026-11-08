@@ -2,8 +2,9 @@ import Link from "next/link";
 import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { fa, title } from "@/lib/catalog";
 import { db } from "@/lib/db";
+import PatientAvatar from "@/components/patient-avatar";
 
-type Task = { id: string; name: string; area: string; action: string; href: string; urgent?: boolean };
+type Task = { id: string; patientId: string; name: string; area: string; action: string; href: string; urgent?: boolean };
 
 export default async function DoctorWorkbench({ doctorId }: { doctorId: string }) {
   const cases = await db.case.findMany({
@@ -52,7 +53,7 @@ export default async function DoctorWorkbench({ doctorId }: { doctorId: string }
   for (const item of cases) {
     const reply = item.episodes.find(episode => urgentEpisodes.has(episode.id))
       ?? item.episodes.find(episode => episode.messages[0]?.author === item.patient.id);
-    const row = { id: item.id, name: item.patient.name, area: title(item.areas) };
+    const row = { id: item.id, patientId: item.patient.id, name: item.patient.name, area: title(item.areas) };
     if (reply) {
       const view = reply.number ? "followups" : "queue";
       const urgent = urgentEpisodes.has(reply.id);
@@ -81,7 +82,7 @@ export default async function DoctorWorkbench({ doctorId }: { doctorId: string }
           {tasks.map(task => (
             <li key={task.id}>
               <Link prefetch={false} className={task.urgent ? "urgent-task" : undefined} href={task.href}>
-                <span><strong>{task.name}</strong><small>{task.area}</small></span>
+                <span className="doctor-task-patient"><PatientAvatar userId={task.patientId} size={44}/><span><strong>{task.name}</strong><small>{task.area}</small></span></span>
                 <span className={task.urgent ? "doctor-task-action badge amber" : "doctor-task-action"}>{task.action}<ArrowLeft size={17} aria-hidden="true" /></span>
               </Link>
             </li>

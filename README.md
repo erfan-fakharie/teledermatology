@@ -1,4 +1,4 @@
-# محمد صادقی | Dermatology demo
+# mskin | Dermatology demo
 
 A Persian RTL, responsive dermatology workflow for one physician. The same Next.js app serves patient and doctor views. This repository is configured for synthetic demo data.
 
@@ -20,9 +20,9 @@ For native PostgreSQL 17, start the Compose database using `docker compose up -d
 
 ## Walk through the workflow
 
-1. Enter as **سارا رضایی**, choose skin and/or hair or nutrition, and submit a request.
-2. Switch to **پزشک نمونه** through Account → Logout. In Requests, approve or reject the new request.
-3. Switch back to the patient. A simulated failed payment or cancellation leaves the request in the payment stage. A simulated success creates its queue entry.
+1. Enter as **سارا رضایی**, choose skin, hair, or nutrition, and enter a separate description for each selected topic. Each topic gets its own case and can include up to two optional initial photos, with a 25 MB total limit per request.
+2. Switch to **پزشک نمونه** through Account → Logout. In Requests, approve or reject each case separately.
+3. Switch back to the patient after all cases in the package have been reviewed. A single simulated payment covers the approved cases. A successful payment adds each approved case to the queue separately.
 4. In the physician queue, request completion. In the patient view, upload a synthetic PNG, JPEG or WebP and submit the intake. Nutrition-only intake can be submitted without a photo. An earlier seed case can be deferred with a reason.
 5. Start review as doctor. Open Chat, exchange a few messages and close the initial episode explicitly.
 6. Verify the next episode is locked for the patient. The doctor can advance the demo clock from that episode. The patient's first message opens it. Closing it schedules the second demo follow-up.

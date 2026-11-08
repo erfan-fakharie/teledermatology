@@ -1,0 +1,1 @@
+ALTER TABLE "Attachment" ADD COLUMN "initial" BOOLEAN NOT NULL DEFAULT false;

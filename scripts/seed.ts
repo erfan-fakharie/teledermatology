@@ -8,8 +8,8 @@ try {
     const queueId = "c0300000-0000-4000-8000-000000000001";
     if (!(await tx.case.findUnique({where:{id:queueId}}))) {
       await tx.case.create({data:{
-        id:queueId,patientId:"patient_queue",areas:["SKIN","HAIR"],
-        concern:"این یک پروندهٔ ساختگی برای نمایش بررسی پوست و مو است.",
+        id:queueId,patientId:"patient_queue",areas:["SKIN"],
+        concern:"این یک پروندهٔ ساختگی برای نمایش بررسی پوست است.",
         amount:BigInt(demoPrice),status:"QUEUED",
         intake:{duration:"حدود سه ماه",history:"اطلاعات آزمایشی؛ سابقهٔ ثبت‌شده ندارد."},
         queue:{create:{state:"PREPARING"}},payments:{create:{result:"VERIFIED",amount:BigInt(demoPrice)}},

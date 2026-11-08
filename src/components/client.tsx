@@ -3,15 +3,17 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, Ellipsis, Expand, ImagePlus, Paperclip, Send, Upload, UserRound } from "lucide-react";
-import { areaLabels, areas, demoPrice, fa, title } from "@/lib/catalog";
+import { Apple, ArrowLeft, Check, Ellipsis, Expand, ImagePlus, Paperclip, ScanFace, Send, Upload, Waves } from "lucide-react";
+import { areaLabels, areas, demoPrice, fa, maxImageBytes, maxInitialPhotos, title } from "@/lib/catalog";
+import PatientAvatar from "@/components/patient-avatar";
 
 type Asset = { id:string; filename:string; bytes?:number };
 type Values = Record<string,unknown>;
+const packageIcons = { SKIN: ScanFace, HAIR: Waves, DIET: Apple };
 
-async function submit(input: Values | FormData) {
+async function submit(input: Values | FormData, endpoint?: string) {
   const upload = input instanceof FormData;
-  const response = await fetch(upload?"/api/files":"/api/action",{
+  const response = await fetch(endpoint??(upload?"/api/files":"/api/action"),{
     method:"POST",headers:upload?undefined:{"Content-Type":"application/json"},body:upload?input:JSON.stringify(input),
   });
   const json = await response.json();
@@ -24,12 +26,12 @@ function useSubmit() {
   const [error,setError] = useState("");
   const [busy,setBusy] = useState(false);
   const pending = useRef(false);
-  async function run(input: Values | FormData, done?: (data:{id?:string;filename?:string})=>void) {
+  async function run(input: Values | FormData, done?: (data:{id?:string;filename?:string})=>void, endpoint?: string) {
     if (pending.current) return;
     pending.current=true;
     setBusy(true);
     setError("");
-    try { const data=await submit(input); done?.(data); router.refresh(); }
+    try { const data=await submit(input,endpoint); done?.(data); router.refresh(); }
     catch (error) { setError(error instanceof Error && error.message !== "Failed to fetch" ? error.message : "ارتباط برقرار نشد. دوباره تلاش کنید."); }
     finally { pending.current=false;setBusy(false); }
   }
@@ -52,21 +54,66 @@ export function Action({text,data,secondary=false,reason=false,confirmText}:{tex
 export function Login({accounts}:{accounts:readonly {id:string;name:string;role:string}[]}) {
   const {error,busy,run}=useSubmit();
   return <div className="flow">{accounts.map(a=><button key={a.id} disabled={busy} className="account" onClick={()=>void run({type:"login",id:a.id},()=>location.assign("/app"))}>
-    <span className="avatar"><UserRound size={20}/></span><span><strong>{a.name}</strong><small>{a.role==="DOCTOR"?"پنل پزشک":"پنل بیمار"}</small></span><ArrowLeft size={18}/></button>)}<ErrorText text={error}/></div>;
+    <PatientAvatar userId={a.id}/><span><strong>{a.name}</strong><small>{a.role==="DOCTOR"?"پنل پزشک":"پنل بیمار"}</small></span><ArrowLeft size={18}/></button>)}<ErrorText text={error}/></div>;
 }
 export function RequestForm() {
   const [chosen,setChosen]=useState<string[]>([]);
+  const [descriptions,setDescriptions]=useState<Record<string,string>>({});
+  const [photos,setPhotos]=useState<Record<string,File[]>>({});
+  const [photoError,setPhotoError]=useState("");
   const [step,setStep]=useState(false);
   const {error,busy,run}=useSubmit();
   return <form className="flow" onSubmit={e=>{
     e.preventDefault(); const fields=new FormData(e.currentTarget);
     if (!step) {setStep(true);return;}
-    void run({type:"request",areas:chosen,concern:fields.get("concern"),consent:fields.get("consent")==="on"},data=>location.assign("/app?case="+data.id));
+    const concerns=Object.fromEntries(chosen.map(area=>[area,descriptions[area]]));
+    const payload={type:"request",areas:chosen,concerns,consent:fields.get("consent")==="on"};
+    const goToCase=(data:{id?:string})=>location.assign(chosen.length>1?"/app?view=cases":"/app?case="+data.id);
+    const attachments=chosen.flatMap(area=>(photos[area]??[]).map(file=>({area,file})));
+    if (!attachments.length) {void run(payload,goToCase);return;}
+    const form=new FormData();
+    form.set("payload",JSON.stringify(payload));
+    for(const {area,file} of attachments) form.append(area,file);
+    void run(form,goToCase,"/api/requests");
   }}>
     <h2>{step?"شرح مشکل":"انتخاب پکیج"}</h2>
-    {!step ? <div className="packages">{areas.map(area=><label className={"package "+(chosen.includes(area)?"chosen":"")} key={area}><input type="checkbox" checked={chosen.includes(area)} onChange={e=>setChosen(e.target.checked?[...chosen,area]:chosen.filter(x=>x!==area))}/><strong>{areaLabels[area]}</strong></label>)}</div>
-      : <><label>توضیح کوتاه دربارهٔ مشکل<textarea name="concern" required rows={5} minLength={10} maxLength={3000}/></label><label className="inline"><input type="checkbox" name="consent" required/>شرایط استفاده از حساب و دادهٔ نمایشی را می‌پذیرم.</label></>}
-    {chosen.length>0&&<p className="soft">{title(chosen)} · {fa(demoPrice)} تومان · مبلغ نمایشی</p>}
+    {!step ? <fieldset className="packages" aria-label="موضوعات مشاوره">{areas.map(area=>{
+      const Icon=packageIcons[area];
+      return <label className="package" key={area}>
+        <span className="package-icon"><Icon size={20} aria-hidden="true"/></span>
+        <strong>{areaLabels[area]}</strong>
+        <input type="checkbox" checked={chosen.includes(area)} onChange={e=>setChosen(e.target.checked?[...chosen,area]:chosen.filter(x=>x!==area))}/>
+      </label>;
+    })}</fieldset>
+      : <>
+        {chosen.map(area=><section className="request-topic flow" key={area}>
+          <label>شرح مشکل {areaLabels[area]}<textarea required rows={3} minLength={10} maxLength={3000} value={descriptions[area]??""} onChange={e=>setDescriptions(prev=>({...prev,[area]:e.target.value}))}/></label>
+          <label className="upload upload-compact request-upload"><Paperclip size={16} aria-hidden="true"/> افزودن عکس {areaLabels[area]} (اختیاری)
+            <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={busy} onChange={e=>{
+              const files=Array.from(e.target.files??[]);
+              e.target.value="";
+              if(!files.length) return;
+              const selected=[...(photos[area]??[]),...files];
+              const size=chosen.flatMap(key=>key===area?selected:(photos[key]??[])).reduce((sum,file)=>sum+file.size,0);
+              if(selected.length>maxInitialPhotos) {setPhotoError("برای هر موضوع حداکثر دو عکس اضافه کنید.");return;}
+              if(size>maxImageBytes) {setPhotoError("حجم مجموع عکس‌ها باید حداکثر ۲۵ مگابایت باشد.");return;}
+              setPhotos(prev=>({...prev,[area]:selected}));
+              setPhotoError("");
+            }}/>
+          </label>
+          {!!photos[area]?.length&&<ul className="request-photo-list">{photos[area].map((file,index)=><li key={`${file.name}-${index}`}>
+            <bdi>{file.name}</bdi><button className="btn small" type="button" disabled={busy} aria-label={`حذف عکس ${file.name}`} onClick={()=>{
+              setPhotos(prev=>({...prev,[area]:prev[area].filter((_,i)=>i!==index)}));
+              setPhotoError("");
+            }}>حذف</button>
+          </li>)}</ul>}
+        </section>)}
+        <small>JPEG، PNG یا WebP · حداکثر دو عکس برای هر موضوع و مجموعاً ۲۵ مگابایت</small>
+        <ErrorText text={photoError}/>
+        <label className="check-option"><input type="checkbox" name="consent" required/><span>شرایط استفاده از حساب و دادهٔ نمایشی را می‌پذیرم.</span></label>
+      </>}
+    {chosen.length>1&&<p>برای هر موضوع یک پروندهٔ جدا ساخته می‌شود. پس از بررسی درخواست‌ها، مبلغ پکیج یک‌بار پرداخت می‌شود.</p>}
+    {chosen.length>0&&<p className="soft">{title(chosen)} · {fa(demoPrice)} تومان · مبلغ نمایشی پکیج</p>}
     <div className="actions"><button className="btn primary" disabled={!chosen.length||busy}>{step?"ثبت درخواست":"ادامه و شرح مشکل"}</button>{step&&<button className="btn" type="button" onClick={()=>setStep(false)}>بازگشت</button>}</div><ErrorText text={error}/>
   </form>;
 }
@@ -126,7 +173,7 @@ export function Composer({id,episodeId,initialFiles,allowUrgent=false,urgentOnly
       <div className="composer-actions">
         <div className="actions">
           {!urgentOnly&&<Uploader compact id={id} episodeId={episodeId} onFile={file=>setFiles(prev=>[...prev,file])}/>}
-          {allowUrgent&&!urgentOnly&&<label className="inline"><input type="checkbox" checked={urgent} onChange={e=>setUrgent(e.target.checked)}/> مورد ضروری</label>}
+          {allowUrgent&&!urgentOnly&&<label className="check-option"><input type="checkbox" checked={urgent} onChange={e=>setUrgent(e.target.checked)}/><span>مورد ضروری</span></label>}
         </div>
         <button className="btn primary" disabled={busy||(!body.trim()&&!files.length)}>{urgentOnly||urgent?"ارسال مورد ضروری":"ارسال پیام"} <Send size={16} aria-hidden="true"/></button>
       </div>
