@@ -14,7 +14,7 @@ npm run demo
 
 On Windows PowerShell, use `Copy-Item .env.example .env` for the second command. Open http://127.0.0.1:3000/login. The demo command starts a local PGlite database through a PostgreSQL-compatible TCP socket, runs Prisma migrations and seeds the sample accounts. Data is persistent in `.data/`.
 
-The landing page can display optional before-and-after images from `public/skin-case-01.jpg` and `public/skin-case-02.jpg`. These files are excluded from Git. Add images only when they are approved for public display. The gallery is hidden when neither file is present.
+The landing page displays the before-and-after examples from `public/skin-case-01.jpg` and `public/skin-case-02.jpg`. The gallery is hidden when neither file is present.
 
 For native PostgreSQL 17, start the Compose database using `docker compose up -d db` and run `npm run demo -- --external-db`. Keep the default database URL for the Compose settings, or change DATABASE_URL for your own local instance. Use one database per data directory. Local database port is 55432 and app port is 3000 by default. For an alternate app origin, set APP_ORIGIN to the exact browser origin. Set DERM_APP_PORT to select a different port for the demo launcher.
 

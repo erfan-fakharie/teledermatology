@@ -7,5 +7,3 @@ next-env.d.ts
 !.env.example
 src/generated/
 *.tsbuildinfo
-public/skin-case-01.jpg
-public/skin-case-02.jpg
